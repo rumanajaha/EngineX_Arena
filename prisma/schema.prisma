@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BattleMode {
+  SYSTEM_CRASH
+  ARCH_WARS
+  LOAD_BREAKER
+}
+
+enum BattleStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Player {
+  id            String             @id @default(uuid())
+  githubId      String             @unique
+  username      String
+  avatar        String
+  bio           String?
+  githubUrl     String?
+  eloRating     Int                @default(1000)
+  totalWins     Int                @default(0)
+  totalLosses   Int                @default(0)
+  currentStreak Int                @default(0)
+  weeklyWins    Int                @default(0)
+  badges        String[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  
+  userId        String?            @unique
+  user          User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  battlesAsP1   Battle[]           @relation("Player1Battles")
+  battlesAsP2   Battle[]           @relation("Player2Battles")
+  wonBattles    Battle[]           @relation("WinnerBattles")
+  submissions   BattleSubmission[]
+}
+
+model Battle {
+  id          String             @id @default(uuid())
+  mode        BattleMode
+  status      BattleStatus
+  roomId      String             @unique
+  player1Id   String
+  player1     Player             @relation("Player1Battles", fields: [player1Id], references: [id])
+  player2Id   String?
+  player2     Player?            @relation("Player2Battles", fields: [player2Id], references: [id])
+  winnerId    String?
+  winner      Player?            @relation("WinnerBattles", fields: [winnerId], references: [id])
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime           @default(now())
+  
+  submissions BattleSubmission[]
+}
+
+model BattleSubmission {
+  id               String   @id @default(uuid())
+  battleId         String
+  battle           Battle   @relation(fields: [battleId], references: [id])
+  playerId         String
+  player           Player   @relation(fields: [playerId], references: [id])
+  submittedAt      DateTime @default(now())
+  score            Float?
+  output           String?
+  timeTakenMs      Int?
+  codeSubmitted    String?
+  architectureJson Json?
+  solo             Boolean  @default(false)
+}
+
+model Challenge {
+  id           String     @id @default(uuid())
+  mode         BattleMode
+  title        String
+  description  String
+  difficulty   Difficulty
+  brokenCode   String?
+  designPrompt String?
+  slowCode     String?
+  benchmarkMs  Int?
+  testCases    Json
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  player        Player?
+}
+
+model Account {
+  id                 String  @id @default(uuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
