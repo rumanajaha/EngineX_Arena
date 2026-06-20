@@ -59,17 +59,17 @@ export default function LobbyPage() {
   const [onlinePlayerIds, setOnlinePlayerIds] = useState<string[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState("");
-  
+
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchingMode, setSearchingMode] = useState("");
-  
+
   // Custom Room creation details
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   const [createMode, setCreateMode] = useState("SYSTEM_CRASH");
   const [createDifficulty, setCreateDifficulty] = useState("MEDIUM");
   const [createIsPrivate, setCreateIsPrivate] = useState(false);
-  
+
   // Host waiting states
   const [isWaitingForOpponent, setIsWaitingForOpponent] = useState(false);
   const [waitingRoomId, setWaitingRoomId] = useState("");
@@ -155,7 +155,7 @@ export default function LobbyPage() {
     if (!player) return;
 
     // Connect to Socket.io server
-    const socket = io("http://localhost:3001");
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!);
     socketRef.current = socket;
 
     socket.emit("join:lobby", player.id);
@@ -421,17 +421,15 @@ export default function LobbyPage() {
         <div className="flex md:hidden bg-surface/40 border-b border-khaki/10 p-2 space-x-2 flex-shrink-0 relative z-20">
           <button
             onClick={() => setMobileView("dashboard")}
-            className={`flex-1 py-2 font-space text-[11px] uppercase font-bold tracking-wider rounded-lg transition ${
-              mobileView === "dashboard" ? "bg-cream text-bg" : "text-khaki"
-            }`}
+            className={`flex-1 py-2 font-space text-[11px] uppercase font-bold tracking-wider rounded-lg transition ${mobileView === "dashboard" ? "bg-cream text-bg" : "text-khaki"
+              }`}
           >
             Dashboard
           </button>
           <button
             onClick={() => setMobileView("chat")}
-            className={`flex-grow py-2 font-space text-[11px] uppercase font-bold tracking-wider rounded-lg transition ${
-              mobileView === "chat" ? "bg-cream text-bg" : "text-khaki"
-            }`}
+            className={`flex-grow py-2 font-space text-[11px] uppercase font-bold tracking-wider rounded-lg transition ${mobileView === "chat" ? "bg-cream text-bg" : "text-khaki"
+              }`}
           >
             Chat & Socials ({onlineCount})
           </button>
@@ -439,7 +437,7 @@ export default function LobbyPage() {
 
         {/* Main Grid */}
         <div className="flex-1 flex overflow-hidden relative z-10 flex-col md:flex-row">
-          
+
           {/* Left Sidebar (Tabs Chat) */}
           <aside className={`${mobileView === "chat" ? "flex" : "hidden"} md:flex w-full md:w-80 border-b md:border-b-0 md:border-r border-khaki/10 bg-surface/30 flex-col h-full overflow-hidden flex-shrink-0`}>
             {/* Header / Online Status */}
@@ -466,9 +464,8 @@ export default function LobbyPage() {
                       setActiveDmFriend(null);
                       setActiveGroup(null);
                     }}
-                    className={`flex-1 py-3 font-space text-[10px] uppercase font-bold tracking-wider transition ${
-                      isActive ? "text-sand border-b-2 border-sand bg-surface/20" : "text-khaki hover:text-cream"
-                    } cursor-pointer`}
+                    className={`flex-1 py-3 font-space text-[10px] uppercase font-bold tracking-wider transition ${isActive ? "text-sand border-b-2 border-sand bg-surface/20" : "text-khaki hover:text-cream"
+                      } cursor-pointer`}
                   >
                     {t}
                   </button>
@@ -478,7 +475,7 @@ export default function LobbyPage() {
 
             {/* Tab Contents */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              
+
               {/* GLOBAL TAB */}
               {activeTab === "global" && (
                 <>
@@ -921,9 +918,9 @@ export default function LobbyPage() {
             <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50" />
             <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-surface border border-khaki/20 p-8 rounded-2xl w-full max-w-md z-50 shadow-2xl overflow-hidden font-sans flex flex-col max-h-[90vh]">
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-sand to-transparent opacity-50" />
-              
+
               <Dialog.Title className="font-space text-2xl font-bold text-cream mb-6 flex-shrink-0">CREATE BATTLE ROOM</Dialog.Title>
-              
+
               <form onSubmit={handleCreateRoomSubmit} className="flex-1 flex flex-col min-h-0">
                 {/* Scrollable contents */}
                 <div className="flex-1 overflow-y-auto pr-1 space-y-6 min-h-0 pb-4">
@@ -936,11 +933,10 @@ export default function LobbyPage() {
                           key={m}
                           type="button"
                           onClick={() => setCreateMode(m)}
-                          className={`py-2 text-[10px] font-space font-bold uppercase rounded-lg border tracking-wider transition ${
-                            createMode === m
-                              ? "bg-cream text-bg border-cream"
-                              : "border-khaki/20 hover:border-khaki/50 text-cream"
-                          }`}
+                          className={`py-2 text-[10px] font-space font-bold uppercase rounded-lg border tracking-wider transition ${createMode === m
+                            ? "bg-cream text-bg border-cream"
+                            : "border-khaki/20 hover:border-khaki/50 text-cream"
+                            }`}
                         >
                           {formatModeName(m)}
                         </button>
@@ -957,11 +953,10 @@ export default function LobbyPage() {
                           key={d}
                           type="button"
                           onClick={() => setCreateDifficulty(d)}
-                          className={`py-2 text-xs font-space font-bold uppercase rounded-lg border tracking-wider transition ${
-                            createDifficulty === d
-                              ? "bg-cream text-bg border-cream"
-                              : "border-khaki/20 hover:border-khaki/50 text-cream"
-                          }`}
+                          className={`py-2 text-xs font-space font-bold uppercase rounded-lg border tracking-wider transition ${createDifficulty === d
+                            ? "bg-cream text-bg border-cream"
+                            : "border-khaki/20 hover:border-khaki/50 text-cream"
+                            }`}
                         >
                           {d}
                         </button>
@@ -980,9 +975,8 @@ export default function LobbyPage() {
                         className="relative w-10 h-6 bg-surface2 border border-khaki/20 rounded-full transition duration-300"
                       >
                         <span
-                          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-cream rounded-full transition transform ${
-                            createIsPrivate ? "translate-x-4" : ""
-                          }`}
+                          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-cream rounded-full transition transform ${createIsPrivate ? "translate-x-4" : ""
+                            }`}
                         />
                       </button>
                       <span className={createIsPrivate ? "text-cream" : "text-khaki"}>PRIVATE</span>
@@ -1017,7 +1011,7 @@ export default function LobbyPage() {
             <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-fade-in" />
             <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-surface border border-khaki/20 p-6 rounded-2xl w-full max-w-sm z-50 shadow-2xl overflow-hidden font-sans flex flex-col max-h-[85vh]">
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-sand to-transparent opacity-60 flex-shrink-0" />
-              
+
               <Dialog.Title className="font-space text-lg font-bold text-cream mb-4 uppercase flex-shrink-0">
                 Create Group Chat
               </Dialog.Title>
@@ -1057,7 +1051,7 @@ export default function LobbyPage() {
                             <input
                               type="checkbox"
                               checked={selectedGroupMembers.includes(f.id)}
-                              onChange={() => {}}
+                              onChange={() => { }}
                               className="accent-sand"
                             />
                           </div>
