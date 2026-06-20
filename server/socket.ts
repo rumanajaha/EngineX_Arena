@@ -8,6 +8,14 @@ import { randomUUID } from "crypto";
 const PORT = process.env.SOCKET_PORT ? parseInt(process.env.SOCKET_PORT) : 3001;
 
 const httpServer = createServer((req, res) => {
+  if (req.url === "/api/online-count") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify({ count: getOnlineCount() }));
+    return;
+  }
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Socket.io Server Running\n");
 });
@@ -38,6 +46,14 @@ io.on("connection", (socket: Socket) => {
     io.to("lobby").emit("lobby:players_update", {
       count: getOnlineCount(),
       onlinePlayerIds: Array.from(new Set(onlinePlayers.values())),
+    });
+
+    // Auto-join group rooms for this player
+    groups.forEach((g, gId) => {
+      if (g.memberIds.includes(playerId)) {
+        socket.join(`group:${gId}`);
+        socket.emit("group:joined", g);
+      }
     });
   });
 
@@ -289,6 +305,89 @@ io.on("connection", (socket: Socket) => {
   socket.on("rematch:request", (data: { roomId: string; playerId: string }) => {
     const { roomId, playerId } = data;
     socket.to(`battle:${roomId}`).emit("rematch:request_received", { playerId });
+  });
+
+  // Groups stored in memory on the socket server
+  // Structure: Map<groupId, { id, name, memberIds }>
+  const groups = new Map<string, { id: string; name: string; memberIds: string[] }>();
+
+  // Direct Messaging
+  socket.on("dm:send", async (data: { toId: string; message: string }) => {
+    const { toId, message } = data;
+    const fromId = onlinePlayers.get(socket.id);
+    if (!fromId) return;
+
+    try {
+      const sender = await prisma.player.findUnique({
+        where: { id: fromId },
+      });
+      if (sender) {
+        onlinePlayers.forEach((pId, sId) => {
+          if (pId === toId) {
+            io.to(sId).emit("dm:receive", {
+              fromId,
+              username: sender.username,
+              avatar: sender.avatar,
+              message,
+              timestamp: new Date().toISOString(),
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Error in dm:send socket handler:", err);
+    }
+  });
+
+  // Group Management & Chat
+  socket.on("group:create", (data: { name: string; memberIds: string[] }) => {
+    const { name, memberIds } = data;
+    const groupId = randomUUID();
+    const newGroup = { id: groupId, name, memberIds };
+    groups.set(groupId, newGroup);
+
+    // Make all online members join the group room automatically
+    memberIds.forEach((mId) => {
+      onlinePlayers.forEach((pId, sId) => {
+        if (pId === mId) {
+          const memberSocket = io.sockets.sockets.get(sId);
+          if (memberSocket) {
+            memberSocket.join(`group:${groupId}`);
+            memberSocket.emit("group:joined", newGroup);
+          }
+        }
+      });
+    });
+  });
+
+  socket.on("group:join", (data: { groupId: string; playerId: string }) => {
+    const { groupId, playerId } = data;
+    const group = groups.get(groupId);
+    if (group && group.memberIds.includes(playerId)) {
+      socket.join(`group:${groupId}`);
+      socket.emit("group:joined", group);
+    }
+  });
+
+  socket.on("group:message", (data: { groupId: string; message: string; fromId: string; username: string }) => {
+    const { groupId, message, fromId, username } = data;
+    io.to(`group:${groupId}`).emit("group:receive", {
+      groupId,
+      fromId,
+      username,
+      message,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Automatically join group rooms when player joins lobby
+  socket.on("join:lobby_groups", (playerId: string) => {
+    groups.forEach((g, gId) => {
+      if (g.memberIds.includes(playerId)) {
+        socket.join(`group:${gId}`);
+        socket.emit("group:joined", g);
+      }
+    });
   });
 
   socket.on("disconnect", () => {

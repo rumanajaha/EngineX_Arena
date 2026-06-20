@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { BattleMode, BattleStatus } from "@/app/generated/prisma/client";
+import { BattleMode } from "@/app/generated/prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -26,94 +26,80 @@ export async function GET(
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    // Fetch last 20 completed battles involving this player
-    const battles = await prisma.battle.findMany({
+    // Fetch last 20 BattleSubmissions for this player joined with Battle and opponent Player data
+    const submissions = await prisma.battleSubmission.findMany({
       where: {
-        status: BattleStatus.COMPLETED,
+        playerId: player.id,
+      },
+      include: {
+        battle: {
+          include: {
+            player1: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+                eloRating: true,
+              },
+            },
+            player2: {
+              select: {
+                id: true,
+                username: true,
+                avatar: true,
+                eloRating: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        submittedAt: "desc",
+      },
+      take: 20,
+    });
+
+    // To calculate streak and win stats, fetch all completed battles involving this player
+    const allCompletedBattles = await prisma.battle.findMany({
+      where: {
+        status: "COMPLETED",
         OR: [
           { player1Id: player.id },
           { player2Id: player.id },
         ],
       },
-      include: {
-        player1: {
-          select: {
-            id: true,
-            username: true,
-            avatar: true,
-            eloRating: true,
-          },
-        },
-        player2: {
-          select: {
-            id: true,
-            username: true,
-            avatar: true,
-            eloRating: true,
-          },
-        },
-        winner: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-      },
       orderBy: {
-        endedAt: "desc",
-      },
-      take: 20,
-    });
-
-    // Fetch submissions to calculate speeds and other metrics
-    const submissions = await prisma.battleSubmission.findMany({
-      where: {
-        playerId: player.id,
+        endedAt: "asc",
       },
     });
 
-    // Count wins per mode
-    const wins = battles.filter((b) => b.winnerId === player.id);
-    const winsCrash = wins.filter((b) => b.mode === BattleMode.SYSTEM_CRASH).length;
-    const winsArch = wins.filter((b) => b.mode === BattleMode.ARCH_WARS).length;
-    const winsLoad = wins.filter((b) => b.mode === BattleMode.LOAD_BREAKER).length;
+    // Calculate longest streak
+    let currentWinStreak = 0;
+    let longestStreak = 0;
+    allCompletedBattles.forEach((battle) => {
+      if (battle.winnerId === player.id) {
+        currentWinStreak++;
+        if (currentWinStreak > longestStreak) {
+          longestStreak = currentWinStreak;
+        }
+      } else {
+        currentWinStreak = 0;
+      }
+    });
 
-    const totalCrash = battles.filter((b) => b.mode === BattleMode.SYSTEM_CRASH).length;
-    const totalArch = battles.filter((b) => b.mode === BattleMode.ARCH_WARS).length;
-    const totalLoad = battles.filter((b) => b.mode === BattleMode.LOAD_BREAKER).length;
+    // Calculate win rates per mode for radar and best mode
+    const totalBattles = player.totalWins + player.totalLosses;
+    const winRate = totalBattles > 0 ? Math.round((player.totalWins / totalBattles) * 100) : 0;
 
-    // 1. Debugging score (SYSTEM_CRASH success rate)
-    const debuggingScore = totalCrash > 0 ? Math.round((winsCrash / totalCrash) * 80 + 20) : 50;
+    const crashBattles = allCompletedBattles.filter(b => b.mode === BattleMode.SYSTEM_CRASH);
+    const archBattles = allCompletedBattles.filter(b => b.mode === BattleMode.ARCH_WARS);
+    const loadBattles = allCompletedBattles.filter(b => b.mode === BattleMode.LOAD_BREAKER);
 
-    // 2. Architecture score (ARCH_WARS success rate)
-    const architectureScore = totalArch > 0 ? Math.round((winsArch / totalArch) * 80 + 20) : 50;
+    const winsCrash = crashBattles.filter(b => b.winnerId === player.id).length;
+    const winsArch = archBattles.filter(b => b.winnerId === player.id).length;
+    const winsLoad = loadBattles.filter(b => b.winnerId === player.id).length;
 
-    // 3. Optimization score (LOAD_BREAKER success rate)
-    const optimizationScore = totalLoad > 0 ? Math.round((winsLoad / totalLoad) * 80 + 20) : 50;
-
-    // 4. Speed score (avg submission time taken in seconds)
-    const validTimes = submissions
-      .map((s) => s.timeTakenMs)
-      .filter((t): t is number => typeof t === "number" && t > 0);
-    const avgTimeMs = validTimes.length > 0 ? validTimes.reduce((a, b) => a + b, 0) / validTimes.length : 120000;
-    
-    // Formula: 100 - avg seconds taken / 2. Placed in bounds [20, 100]
-    const speedScore = Math.max(20, Math.min(100, Math.round(100 - (avgTimeMs / 2000))));
-
-    // 5. Consistency score (based on win rate and current streak)
-    const totalMatches = player.totalWins + player.totalLosses;
-    const winRate = totalMatches > 0 ? (player.totalWins / totalMatches) * 100 : 0;
-    const consistencyScore = Math.max(20, Math.min(100, Math.round(winRate * 0.8 + player.currentStreak * 5)));
-
-    const radarStats = [
-      { subject: "Debugging", A: debuggingScore, fullMark: 100 },
-      { subject: "Architecture", A: architectureScore, fullMark: 100 },
-      { subject: "Optimization", A: optimizationScore, fullMark: 100 },
-      { subject: "Speed", A: speedScore, fullMark: 100 },
-      { subject: "Consistency", A: consistencyScore, fullMark: 100 },
-    ];
-
-    // Compute best mode
+    // Calculate best mode
     const modeWins = { SYSTEM_CRASH: winsCrash, ARCH_WARS: winsArch, LOAD_BREAKER: winsLoad };
     let bestMode = "None";
     let maxWins = 0;
@@ -124,7 +110,31 @@ export async function GET(
       }
     });
 
-    // Check badges conditions
+    // Radar chart calculations:
+    // Debugging, Architecture, Optimization, Speed, Consistency.
+    const debuggingScore = crashBattles.length > 0 ? Math.round((winsCrash / crashBattles.length) * 80 + 20) : 0;
+    const architectureScore = archBattles.length > 0 ? Math.round((winsArch / archBattles.length) * 80 + 20) : 0;
+    const optimizationScore = loadBattles.length > 0 ? Math.round((winsLoad / loadBattles.length) * 80 + 20) : 0;
+
+    // Speed Score
+    const timeTakens = submissions
+      .map(s => s.timeTakenMs)
+      .filter((t): t is number => typeof t === "number" && t > 0);
+    const avgTimeMs = timeTakens.length > 0 ? timeTakens.reduce((sum, current) => sum + current, 0) / timeTakens.length : 0;
+    const speedScore = avgTimeMs > 0 ? Math.max(0, Math.min(100, Math.round(100 - (avgTimeMs / 2000)))) : 0;
+
+    // Consistency Score
+    const consistencyScore = totalBattles > 0 ? Math.max(0, Math.min(100, Math.round(winRate * 0.8 + player.currentStreak * 5))) : 0;
+
+    const radarStats = [
+      { subject: "Debugging", A: debuggingScore, fullMark: 100 },
+      { subject: "Architecture", A: architectureScore, fullMark: 100 },
+      { subject: "Optimization", A: optimizationScore, fullMark: 100 },
+      { subject: "Speed", A: speedScore, fullMark: 100 },
+      { subject: "Consistency", A: consistencyScore, fullMark: 100 },
+    ];
+
+    // Sync badges (if any new ones are unlocked)
     const newBadges: string[] = [];
     if (player.totalWins >= 1) newBadges.push("First Blood");
     if (player.currentStreak >= 3) newBadges.push("Hat Trick");
@@ -132,17 +142,15 @@ export async function GET(
     if (winsArch >= 10) newBadges.push("Architect");
     if (winsCrash >= 10) newBadges.push("Exterminator");
     
-    // Speedrun badge: won LoadBreaker in under 60 seconds
-    const hasSpeedrun = wins.some((b) => {
+    const hasSpeedrun = allCompletedBattles.some((b) => {
       if (b.mode !== BattleMode.LOAD_BREAKER) return false;
       const playerSub = submissions.find((s) => s.battleId === b.id && s.timeTakenMs && s.timeTakenMs <= 60000);
       return !!playerSub;
     });
     if (hasSpeedrun) newBadges.push("Speedrun");
-    if (totalMatches >= 100) newBadges.push("Centurion");
+    if (totalBattles >= 100) newBadges.push("Centurion");
     if (player.eloRating >= 1600) newBadges.push("Elite");
 
-    // Sync badges with database if changed
     if (JSON.stringify(newBadges.sort()) !== JSON.stringify(player.badges.sort())) {
       await prisma.player.update({
         where: { id: player.id },
@@ -155,13 +163,16 @@ export async function GET(
 
     return NextResponse.json({
       player,
-      battles,
+      submissions,
       radarStats,
       bestMode,
+      longestStreak,
+      winRate,
+      totalBattles,
     });
   } catch (error) {
-    console.error("Error fetching profile:", error);
-    return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 });
+    console.error("Error fetching profile API:", error);
+    return NextResponse.json({ error: "Failed to fetch profile data" }, { status: 500 });
   }
 }
 
@@ -193,7 +204,7 @@ export async function PUT(
 
     return NextResponse.json({ success: true, player: updatedPlayer });
   } catch (error) {
-    console.error("Error updating profile:", error);
-    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
+    console.error("Error updating profile bio:", error);
+    return NextResponse.json({ error: "Failed to update profile bio" }, { status: 500 });
   }
 }

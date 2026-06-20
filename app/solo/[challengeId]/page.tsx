@@ -15,10 +15,13 @@ import ReactFlow, {
   Connection,
   Edge,
   Node,
+  ReactFlowProvider,
+  useReactFlow,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useToast } from "@/components/providers/ToastProvider";
+import { nodeTypes, NODE_CONFIGS } from "@/components/CustomNodes";
 
 interface Challenge {
   id: string;
@@ -52,7 +55,7 @@ const nodeColors: Record<string, string> = {
   CDN: "bg-pink-900 border-pink-400 text-pink-100",
 };
 
-export default function SoloChallengePage() {
+function SoloChallengePageContent() {
   const { challengeId } = useParams() as { challengeId: string };
   const { data: session } = useSession();
   const router = useRouter();
@@ -72,6 +75,356 @@ export default function SoloChallengePage() {
   const [archDescription, setArchDescription] = useState("");
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [selectedTool, setSelectedTool] = useState<string>("select");
+  const [history, setHistory] = useState<{ nodes: any[]; edges: any[] }[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
+  const [edgeLabelText, setEdgeLabelText] = useState<string>("");
+  const [snapToGrid, setSnapToGrid] = useState<boolean>(false);
+
+  const { project } = useReactFlow();
+
+  // History management helper
+  const recordHistoryState = useCallback((currentNodes: any[], currentEdges: any[]) => {
+    const stripCallbacks = (array: any[]) =>
+      array.map((item) => {
+        const copy = { ...item };
+        if (copy.data) {
+          copy.data = { ...copy.data };
+          delete copy.data.onRename;
+          delete copy.data.onDelete;
+        }
+        return copy;
+      });
+
+    setHistory((prev) => {
+      const sliced = prev.slice(0, historyIndex + 1);
+      const cleanCurrent = {
+        nodes: stripCallbacks(currentNodes),
+        edges: currentEdges,
+      };
+
+      if (sliced.length > 0) {
+        const last = sliced[sliced.length - 1];
+        if (JSON.stringify(last.nodes) === JSON.stringify(cleanCurrent.nodes) &&
+            JSON.stringify(last.edges) === JSON.stringify(cleanCurrent.edges)) {
+          return prev;
+        }
+      }
+      const newHistory = [...sliced, cleanCurrent];
+      setHistoryIndex(newHistory.length - 1);
+      return newHistory;
+    });
+  }, [historyIndex]);
+
+  // Rename node callback
+  const handleRenameNode = useCallback((nodeId: string, newName: string) => {
+    setNodes((nds) => {
+      const next = nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, name: newName } } : n));
+      setTimeout(() => recordHistoryState(next, edges), 0);
+      return next;
+    });
+  }, [edges, recordHistoryState, setNodes]);
+
+  // Delete node callback
+  const handleDeleteNode = useCallback((nodeId: string) => {
+    setNodes((nds) => {
+      const next = nds.filter((n) => n.id !== nodeId);
+      setEdges((eds) => {
+        const nextEds = eds.filter((e) => e.source !== nodeId && e.target !== nodeId);
+        setTimeout(() => recordHistoryState(next, nextEds), 0);
+        return nextEds;
+      });
+      return next;
+    });
+  }, [recordHistoryState, setNodes, setEdges]);
+
+  // Color change callback
+  const handleColorChange = useCallback((nodeId: string, color: string) => {
+    setNodes((nds) => {
+      const next = nds.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, color } } : n));
+      setTimeout(() => recordHistoryState(next, edges), 0);
+      return next;
+    });
+  }, [edges, recordHistoryState, setNodes]);
+
+  // Enrich nodes with function callbacks (useful when loading state or undoing)
+  const enrichNodes = useCallback((nds: any[]) => {
+    return nds.map((n) => ({
+      ...n,
+      data: {
+        ...n.data,
+        onRename: handleRenameNode,
+        onDelete: handleDeleteNode,
+      },
+    }));
+  }, [handleRenameNode, handleDeleteNode]);
+
+  // Undo / Redo operations
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      const state = history[prevIndex];
+      setHistoryIndex(prevIndex);
+      setNodes(enrichNodes(state.nodes));
+      setEdges(state.edges);
+    }
+  }, [historyIndex, history, enrichNodes, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const state = history[nextIndex];
+      setHistoryIndex(nextIndex);
+      setNodes(enrichNodes(state.nodes));
+      setEdges(state.edges);
+    }
+  }, [historyIndex, history, enrichNodes, setNodes, setEdges]);
+
+  // Keydown handler for keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const isUndo = isMac ? (e.metaKey && e.key === "z" && !e.shiftKey) : (e.ctrlKey && e.key === "z" && !e.shiftKey);
+      const isRedo = isMac
+        ? (e.metaKey && e.key === "z" && e.shiftKey) || (e.metaKey && e.key === "y")
+        : (e.ctrlKey && e.key === "z" && e.shiftKey) || (e.ctrlKey && e.key === "y");
+
+      if (isUndo) {
+        e.preventDefault();
+        handleUndo();
+      } else if (isRedo) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
+  // Right-click context handlers
+  const onNodeContextMenu = useCallback((event: React.MouseEvent, node: Node) => {
+    event.preventDefault();
+    setContextMenu({
+      id: node.id,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+
+  const handleContextRename = useCallback((nodeId: string) => {
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    const currentName = node.data.name || node.data.label || "";
+    const newName = prompt("Rename Node:", currentName);
+    if (newName !== null) {
+      handleRenameNode(nodeId, newName);
+    }
+    setContextMenu(null);
+  }, [nodes, handleRenameNode]);
+
+  const handleContextDuplicate = useCallback((nodeId: string) => {
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    const newId = (nodes.length + 1).toString() + "-" + Math.random().toString(36).substr(2, 4);
+    const duplicatedNode: Node = {
+      ...node,
+      id: newId,
+      position: { x: node.position.x + 35, y: node.position.y + 35 },
+      data: {
+        ...node.data,
+        onRename: handleRenameNode,
+        onDelete: handleDeleteNode,
+      },
+    };
+    const next = nodes.concat(duplicatedNode);
+    setNodes(next);
+    recordHistoryState(next, edges);
+    setContextMenu(null);
+  }, [nodes, edges, handleRenameNode, handleDeleteNode, recordHistoryState, setNodes]);
+
+  const handleContextDelete = useCallback((nodeId: string) => {
+    handleDeleteNode(nodeId);
+    setContextMenu(null);
+  }, [handleDeleteNode]);
+
+  const handleContextColor = useCallback((nodeId: string, color: string) => {
+    handleColorChange(nodeId, color);
+    setContextMenu(null);
+  }, [handleColorChange]);
+
+  // Close context menu & edge editor on click
+  useEffect(() => {
+    const closeAll = () => {
+      setContextMenu(null);
+    };
+    document.addEventListener("click", closeAll);
+    return () => document.removeEventListener("click", closeAll);
+  }, []);
+
+  // Clear Canvas handler
+  const handleClearCanvas = useCallback(() => {
+    if (confirm("Are you sure you want to clear the entire canvas? This will delete all nodes and arrows.")) {
+      setNodes([]);
+      setEdges([]);
+      recordHistoryState([], []);
+    }
+  }, [recordHistoryState, setNodes, setEdges]);
+
+  // Export PNG handler
+  const handleExportPNG = useCallback(() => {
+    const el = document.querySelector(".react-flow") as HTMLElement;
+    if (!el) return;
+    import("html-to-image").then(({ toPng }) => {
+      toPng(el, {
+        backgroundColor: "#0D0D0A",
+      })
+      .then((dataUrl) => {
+        const link = document.createElement("a");
+        link.download = `architecture-blueprint-${Date.now()}.png`;
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch((error) => {
+        console.error("Failed to export PNG:", error);
+      });
+    });
+  }, []);
+
+  // Edge editing handlers
+  const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    setSelectedEdge(edge);
+    setEdgeLabelText(edge.label ? String(edge.label) : "");
+  }, []);
+
+  const handleUpdateEdgeStyle = useCallback((edgeId: string, styleType: "solid" | "dashed" | "dotted") => {
+    setEdges((eds) => {
+      const next = eds.map((e) => {
+        if (e.id === edgeId) {
+          let updated: Partial<Edge> = {};
+          if (styleType === "solid") {
+            updated = {
+              animated: false,
+              style: { stroke: "#CBBD93", strokeWidth: 2, strokeDasharray: undefined },
+            };
+          } else if (styleType === "dashed") {
+            updated = {
+              animated: true,
+              style: { stroke: "#CBBD93", strokeWidth: 2, strokeDasharray: "5,5" },
+            };
+          } else if (styleType === "dotted") {
+            updated = {
+              animated: false,
+              style: { stroke: "#CBBD93", strokeWidth: 2, strokeDasharray: "1,5", strokeLinecap: "round" },
+            };
+          }
+          const merged = { ...e, ...updated };
+          setSelectedEdge(merged);
+          return merged;
+        }
+        return e;
+      });
+      setTimeout(() => recordHistoryState(nodes, next), 0);
+      return next;
+    });
+  }, [nodes, recordHistoryState, setEdges]);
+
+  const handleUpdateEdgeLabel = useCallback((edgeId: string, label: string) => {
+    setEdges((eds) => {
+      const next = eds.map((e) => {
+        if (e.id === edgeId) {
+          const merged = {
+            ...e,
+            label,
+            labelStyle: { fill: "#FAE8B4", fontWeight: 700, fontFamily: "monospace", fontSize: 10 },
+            labelBgStyle: { fill: "#161612", fillOpacity: 0.85, rx: 4, ry: 4 },
+          };
+          setSelectedEdge(merged);
+          return merged;
+        }
+        return e;
+      });
+      setTimeout(() => recordHistoryState(nodes, next), 0);
+      return next;
+    });
+  }, [nodes, recordHistoryState, setEdges]);
+
+  // Drag stop pushes state to history
+  const onNodeDragStop = useCallback(() => {
+    recordHistoryState(nodes, edges);
+  }, [nodes, edges, recordHistoryState]);
+
+  // Click canvas pane handler
+  const onPaneClick = useCallback((event: React.MouseEvent) => {
+    setSelectedEdge(null);
+    setEdgeLabelText("");
+
+    if (selectedTool === "select" || selectedTool === "arrow") {
+      return;
+    }
+
+    if (!reactFlowWrapper.current) return;
+    const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
+    const position = project({
+      x: event.clientX - reactFlowBounds.left,
+      y: event.clientY - reactFlowBounds.top,
+    });
+
+    const nodeId = (nodes.length + 1).toString() + "-" + Math.random().toString(36).substr(2, 4);
+    let newNode: Node;
+
+    if (selectedTool === "textLabel") {
+      newNode = {
+        id: nodeId,
+        type: "textLabel",
+        data: {
+          label: "Text Label",
+          name: "Text Label",
+          onRename: handleRenameNode,
+          onDelete: handleDeleteNode,
+        },
+        position,
+      };
+    } else if (selectedTool === "stickyNote") {
+      newNode = {
+        id: nodeId,
+        type: "stickyNote",
+        data: {
+          label: "Sticky Note",
+          name: "Double-click to type notes...",
+          onRename: handleRenameNode,
+          onDelete: handleDeleteNode,
+        },
+        position,
+      };
+    } else {
+      newNode = {
+        id: nodeId,
+        type: "archNode",
+        data: {
+          label: selectedTool,
+          name: selectedTool,
+          onRename: handleRenameNode,
+          onDelete: handleDeleteNode,
+        },
+        position,
+      };
+    }
+
+    const next = nodes.concat(newNode);
+    setNodes(next);
+    recordHistoryState(next, edges);
+    setSelectedTool("select");
+  }, [selectedTool, nodes, edges, project, handleRenameNode, handleDeleteNode, recordHistoryState, setNodes]);
 
   // Execution outputs
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
@@ -188,8 +541,20 @@ export default function SoloChallengePage() {
   };
 
   const onConnect = useCallback(
-    (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
+    (params: Connection | Edge) => {
+      const newEdge = {
+        ...params,
+        id: `e-${params.source}-${params.target}-${Math.random().toString(36).substr(2, 4)}`,
+        animated: true,
+        style: { stroke: "#CBBD93", strokeWidth: 2, strokeDasharray: "5,5" },
+      };
+      setEdges((eds) => {
+        const next = addEdge(newEdge, eds);
+        setTimeout(() => recordHistoryState(nodes, next), 0);
+        return next;
+      });
+    },
+    [nodes, recordHistoryState, setEdges]
   );
 
   // Submit Practice Run Handler
@@ -537,32 +902,292 @@ export default function SoloChallengePage() {
               </div>
 
               {/* React Flow topology design area */}
-              <div className="flex-1 flex flex-col bg-surface/5 h-full min-h-0">
-                <div className="h-12 bg-surface border-b border-khaki/10 flex items-center px-6 space-x-2 flex-shrink-0">
-                  <span className="font-space text-[10px] font-bold text-khaki mr-4 uppercase">Nodes:</span>
-                  {["Client", "Server", "Database", "Cache", "Queue", "CDN"].map((type) => (
+              <div className="flex-1 flex flex-col bg-surface/5 h-full min-h-0 relative">
+                {/* HORIZONTAL TOOLBAR */}
+                <div className="h-14 bg-surface border-b border-khaki/10 flex items-center justify-between px-6 flex-shrink-0 relative z-10 font-sans">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-sand animate-pulse" />
+                    <span className="font-space text-xs font-bold uppercase tracking-wider text-cream">Arch Wars Sandbox</span>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    {/* Undo */}
                     <button
-                      key={type}
                       type="button"
-                      onClick={() => addNode(type)}
-                      className="bg-surface2 border border-khaki/25 hover:border-sand text-cream px-2.5 py-1.5 rounded text-[9px] font-space font-bold uppercase tracking-wide cursor-pointer"
+                      onClick={handleUndo}
+                      disabled={historyIndex <= 0}
+                      className="p-2 hover:bg-surface2/50 rounded border border-khaki/15 hover:border-sand text-khaki hover:text-cream disabled:opacity-30 disabled:hover:border-khaki/15 disabled:hover:text-khaki transition cursor-pointer"
+                      title="Undo (Cmd+Z)"
                     >
-                      + {type}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+                      </svg>
                     </button>
-                  ))}
+
+                    {/* Redo */}
+                    <button
+                      type="button"
+                      onClick={handleRedo}
+                      disabled={historyIndex >= history.length - 1}
+                      className="p-2 hover:bg-surface2/50 rounded border border-khaki/15 hover:border-sand text-khaki hover:text-cream disabled:opacity-30 disabled:hover:border-khaki/15 disabled:hover:text-khaki transition cursor-pointer"
+                      title="Redo (Cmd+Shift+Z)"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.934 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.334-4z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.934 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z" />
+                      </svg>
+                    </button>
+
+                    <div className="h-6 w-[1px] bg-khaki/20" />
+
+                    {/* Snap to grid toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setSnapToGrid(!snapToGrid)}
+                      className={`px-3 py-1.5 rounded border text-[9px] font-space font-bold uppercase transition ${
+                        snapToGrid
+                          ? "bg-sand text-bg border-sand"
+                          : "border-khaki/15 text-khaki hover:border-sand hover:text-cream"
+                      }`}
+                    >
+                      Snap Grid
+                    </button>
+
+                    {/* Clear Canvas */}
+                    <button
+                      type="button"
+                      onClick={handleClearCanvas}
+                      className="px-3 py-1.5 border border-red-900/40 hover:border-red-500 text-red-400 hover:bg-red-950/20 rounded text-[9px] font-space font-bold uppercase transition"
+                    >
+                      Clear Canvas
+                    </button>
+
+                    {/* Export PNG */}
+                    <button
+                      type="button"
+                      onClick={handleExportPNG}
+                      className="px-3 py-1.5 border border-khaki/15 hover:border-sand text-cream hover:bg-surface2 rounded text-[9px] font-space font-bold uppercase transition"
+                    >
+                      Export PNG
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1 relative min-h-0">
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect}
-                    fitView
-                  >
-                    <Background color="#CBBD93" gap={16} size={1} />
-                    <Controls className="bg-surface border border-khaki/30 text-cream rounded" />
-                  </ReactFlow>
+
+                <div className="flex-1 flex relative min-h-0">
+                  {/* LEFT TOOL PALETTE */}
+                  <div className="absolute left-4 top-4 bottom-4 z-20 w-48 bg-surface/95 border border-khaki/20 rounded-xl p-4 flex flex-col space-y-4 overflow-y-auto backdrop-blur-md shadow-2xl">
+                    <div className="space-y-2">
+                      <span className="font-mono text-[9px] text-khaki uppercase tracking-widest font-bold">Tools</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Select */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTool("select")}
+                          className={`p-2 rounded-lg border text-xs font-space font-bold uppercase transition flex flex-col items-center justify-center space-y-1 ${
+                            selectedTool === "select"
+                              ? "bg-sand text-bg border-sand"
+                              : "bg-surface2 border-khaki/10 text-cream hover:border-sand"
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672z" />
+                          </svg>
+                          <span className="text-[8px]">Select</span>
+                        </button>
+
+                        {/* Draw Arrow */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTool("arrow")}
+                          className={`p-2 rounded-lg border text-xs font-space font-bold uppercase transition flex flex-col items-center justify-center space-y-1 ${
+                            selectedTool === "arrow"
+                              ? "bg-sand text-bg border-sand"
+                              : "bg-surface2 border-khaki/10 text-cream hover:border-sand"
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                          </svg>
+                          <span className="text-[8px]">Arrow</span>
+                        </button>
+
+                        {/* Add Text */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTool("textLabel")}
+                          className={`p-2 rounded-lg border text-xs font-space font-bold uppercase transition flex flex-col items-center justify-center space-y-1 ${
+                            selectedTool === "textLabel"
+                              ? "bg-sand text-bg border-sand"
+                              : "bg-surface2 border-khaki/10 text-cream hover:border-sand"
+                          }`}
+                        >
+                          <span className="text-sm font-black font-space">T</span>
+                          <span className="text-[8px]">Label</span>
+                        </button>
+
+                        {/* Add Sticky */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTool("stickyNote")}
+                          className={`p-2 rounded-lg border text-xs font-space font-bold uppercase transition flex flex-col items-center justify-center space-y-1 ${
+                            selectedTool === "stickyNote"
+                              ? "bg-sand text-bg border-sand"
+                              : "bg-surface2 border-khaki/10 text-cream hover:border-sand"
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="text-[8px]">Sticky</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-khaki/10" />
+
+                    <div className="flex-1 flex flex-col space-y-2">
+                      <span className="font-mono text-[9px] text-khaki uppercase tracking-widest font-bold">Node Templates</span>
+                      <div className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+                        {Object.entries(NODE_CONFIGS).map(([type, config]) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setSelectedTool(type)}
+                            className={`w-full px-3 py-2 rounded-lg border text-left text-[9px] font-space font-bold uppercase transition flex items-center justify-between ${
+                              selectedTool === type
+                                ? "bg-sand text-bg border-sand"
+                                : "bg-surface2 border-khaki/10 text-cream hover:border-sand"
+                            }`}
+                          >
+                            <span>{type}</span>
+                            <span
+                              className="w-2 h-2 rounded-full border border-white/10"
+                              style={{ backgroundColor: config.color }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Flow Canvas Area */}
+                  <div ref={reactFlowWrapper} className="flex-1 h-full w-full relative min-h-0 pl-52">
+                    <ReactFlow
+                      nodes={nodes}
+                      edges={edges}
+                      onNodesChange={onNodesChange}
+                      onEdgesChange={onEdgesChange}
+                      onConnect={onConnect}
+                      nodeTypes={nodeTypes}
+                      snapToGrid={snapToGrid}
+                      snapGrid={[10, 10]}
+                      onPaneClick={onPaneClick}
+                      onNodeContextMenu={onNodeContextMenu}
+                      onEdgeClick={onEdgeClick}
+                      onNodeDragStop={onNodeDragStop}
+                      fitView
+                    >
+                      <Background color="#CBBD93" gap={16} size={1} />
+                      <Controls className="bg-surface border border-khaki/30 text-cream rounded" />
+                    </ReactFlow>
+
+                    {/* EDGE STYLE EDITOR */}
+                    {selectedEdge && (
+                      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-[#1A1A14]/95 border border-khaki/30 p-4 rounded-xl shadow-2xl z-20 flex items-center space-x-6 font-sans backdrop-blur-md">
+                        <div className="flex flex-col">
+                          <span className="font-mono text-[9px] text-khaki uppercase tracking-widest mb-1.5 font-bold">Edge Style</span>
+                          <div className="flex bg-bg/50 border border-khaki/10 rounded-lg p-0.5 space-x-1">
+                            {["solid", "dashed", "dotted"].map((style) => (
+                              <button
+                                key={style}
+                                type="button"
+                                onClick={() => handleUpdateEdgeStyle(selectedEdge.id, style as any)}
+                                className={`px-2.5 py-1 rounded text-[9px] font-space font-bold uppercase transition ${
+                                  (style === "solid" && !selectedEdge.animated && !selectedEdge.style?.strokeDasharray) ||
+                                  (style === "dashed" && selectedEdge.animated) ||
+                                  (style === "dotted" && !selectedEdge.animated && selectedEdge.style?.strokeDasharray === "1,5")
+                                    ? "bg-sand text-bg"
+                                    : "text-cream hover:bg-surface2"
+                                }`}
+                              >
+                                {style}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="h-8 w-[1px] bg-khaki/20" />
+
+                        <div className="flex flex-col">
+                          <span className="font-mono text-[9px] text-khaki uppercase tracking-widest mb-1.5 font-bold">Edge Label</span>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="text"
+                              value={edgeLabelText}
+                              onChange={(e) => {
+                                setEdgeLabelText(e.target.value);
+                                handleUpdateEdgeLabel(selectedEdge.id, e.target.value);
+                              }}
+                              placeholder="e.g. JSON/HTTPS"
+                              className="bg-bg border border-khaki/20 text-cream px-2 py-1 rounded text-xs font-mono focus:outline-none focus:border-sand w-36"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEdge(null)}
+                              className="text-khaki hover:text-cream text-xs px-2 py-1 cursor-pointer"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* CONTEXT MENU */}
+                    {contextMenu && (
+                      <div
+                        className="fixed bg-[#161612] border border-khaki/25 rounded-lg py-1.5 w-40 shadow-2xl z-50 font-sans"
+                        style={{ top: contextMenu.y, left: contextMenu.x }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleContextRename(contextMenu.id)}
+                          className="w-full text-left px-3.5 py-1.5 text-xs text-cream hover:bg-surface2 transition font-space font-semibold cursor-pointer"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleContextDuplicate(contextMenu.id)}
+                          className="w-full text-left px-3.5 py-1.5 text-xs text-cream hover:bg-surface2 transition font-space font-semibold cursor-pointer"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleContextDelete(contextMenu.id)}
+                          className="w-full text-left px-3.5 py-1.5 text-xs text-red-400 hover:bg-surface2 transition font-space font-semibold cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                        <div className="border-t border-khaki/10 my-1" />
+                        <div className="px-3.5 py-1 text-[8px] font-mono text-khaki uppercase tracking-wider cursor-default select-none">Change Color</div>
+                        <div className="flex px-3.5 py-1.5 gap-1.5 flex-wrap">
+                          {["#3B82F6", "#10B981", "#059669", "#F59E0B", "#8B5CF6", "#EC4899"].map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => handleContextColor(contextMenu.id, color)}
+                              className="w-4 h-4 rounded-full border border-white/10 cursor-pointer transition transform hover:scale-110"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -665,5 +1290,13 @@ export default function SoloChallengePage() {
       </Dialog.Root>
 
     </div>
+  );
+}
+
+export default function SoloChallengePage() {
+  return (
+    <ReactFlowProvider>
+      <SoloChallengePageContent />
+    </ReactFlowProvider>
   );
 }

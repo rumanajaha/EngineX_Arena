@@ -7,8 +7,8 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useToast } from "@/components/providers/ToastProvider";
+import IntroAnimation from "@/components/IntroAnimation";
 
 interface Player {
   id: string;
@@ -75,8 +75,43 @@ const getModeName = (mode: string) => {
   return map[mode] || mode;
 };
 
+const fallbackChallenge: Challenge = {
+  id: "fallback-daily",
+  mode: "SYSTEM_CRASH",
+  title: "Memory Leak: Array Sum Overflow",
+  description: "Analyze the code to find the index-out-of-bounds issue. The function is supposed to sum all integers in an array but accesses an uninitialized element.",
+  difficulty: "EASY",
+};
+
+interface PlayerStats {
+  id: string;
+  username: string;
+  avatar: string;
+  eloRating: number;
+  totalWins: number;
+  totalLosses: number;
+  currentStreak: number;
+  badges: string[];
+}
+
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 2500) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
+
 export default function HubPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const me = session?.player;
   const { showToast } = useToast();
@@ -91,6 +126,7 @@ export default function HubPage() {
   const [friends, setFriends] = useState<Player[]>([]);
   const [onlinePlayerIds, setOnlinePlayerIds] = useState<string[]>([]);
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const friendsRef = useRef<Player[]>([]);
@@ -100,10 +136,7 @@ export default function HubPage() {
     friendsRef.current = friends;
   }, [friends]);
 
-  // Friend challenge modal
-  const [selectedFriend, setSelectedFriend] = useState<Player | null>(null);
-  const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false);
-  const [challengeMode, setChallengeMode] = useState("SYSTEM_CRASH");
+
 
   // Incoming challenge notification toast
   const [activeInvite, setActiveInvite] = useState<FriendChallengeInvite | null>(null);
@@ -119,41 +152,74 @@ export default function HubPage() {
 
   // Fetch initial data
   useEffect(() => {
-    if (!me) return;
+    if (status === "loading") return;
+    if (!me) {
+      setIsLoading(false);
+      return;
+    }
 
     const fetchData = async () => {
+      setIsLoading(true);
+
+      // 1. Fetch Latest Stats from DB
       try {
-        setIsLoading(true);
-        // Recent battles
-        const battlesRes = await fetch("/api/battles/recent");
+        const statsRes = await fetchWithTimeout("/api/hub/stats");
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          setPlayerStats(statsData);
+        }
+      } catch (error) {
+        console.error("Error loading hub stats:", error);
+      }
+
+      // 2. Recent battles
+      try {
+        const battlesRes = await fetchWithTimeout("/api/battles/recent");
         if (battlesRes.ok) {
           const battlesData = await battlesRes.json();
           setRecentBattles(battlesData);
+        } else {
+          setRecentBattles([]);
         }
+      } catch (error) {
+        console.error("Error loading recent battles:", error);
+        setRecentBattles([]);
+      }
 
-        // Daily Challenge
-        const dailyRes = await fetch("/api/challenges/daily");
+      // 3. Daily Challenge
+      try {
+        const dailyRes = await fetchWithTimeout("/api/challenges/daily");
         if (dailyRes.ok) {
           const dailyData = await dailyRes.json();
           setDailyChallenge(dailyData.challenge);
           setDailyChallengeSolvedCount(dailyData.solvedCount);
+        } else {
+          setDailyChallenge(null);
         }
+      } catch (error) {
+        console.error("Error loading daily challenge:", error);
+        setDailyChallenge(null);
+      }
 
-        // Friends
-        const friendsRes = await fetch("/api/friends");
+      // 4. Friends
+      try {
+        const friendsRes = await fetchWithTimeout("/api/friends/list").catch(() => fetchWithTimeout("/api/friends"));
         if (friendsRes.ok) {
           const friendsData = await friendsRes.json();
           setFriends(friendsData);
+        } else {
+          setFriends([]);
         }
       } catch (error) {
-        console.error("Error loading dashboard data:", error);
-      } finally {
-        setIsLoading(false);
+        console.error("Error loading friends:", error);
+        setFriends([]);
       }
+
+      setIsLoading(false);
     };
 
     fetchData();
-  }, [me]);
+  }, [me, status]);
 
   // Handle Socket listeners
   useEffect(() => {
@@ -215,35 +281,7 @@ export default function HubPage() {
     };
   }, [me, router, showToast]);
 
-  // Trigger friend challenge
-  const handleLaunchChallenge = () => {
-    if (!me || !selectedFriend || !socketRef.current) return;
 
-    const mode = challengeMode;
-    // 1. Create a private room
-    socketRef.current.emit(
-      "create:room",
-      {
-        playerId: me.id,
-        mode,
-        difficulty: "MEDIUM",
-        isPrivate: true,
-      },
-      (res: { roomId: string; inviteCode: string }) => {
-        // 2. Emit challenge event to friend
-        socketRef.current?.emit("challenge:friend", {
-          challengerId: me.id,
-          friendId: selectedFriend.id,
-          mode,
-          roomId: res.roomId,
-        });
-
-        setIsChallengeModalOpen(false);
-        // Direct redirect to wait lobby or show message
-        router.push(`/lobby`);
-      }
-    );
-  };
 
   // Accept incoming challenge
   const handleAcceptChallenge = () => {
@@ -258,8 +296,9 @@ export default function HubPage() {
 
   // Daily challenge Play button
   const handlePlayDailyChallenge = () => {
-    if (dailyChallenge) {
-      router.push(`/solo/${dailyChallenge.id}`);
+    const activeChallenge = dailyChallenge || fallbackChallenge;
+    if (activeChallenge) {
+      router.push(`/solo/${activeChallenge.id}`);
     }
   };
 
@@ -340,20 +379,22 @@ export default function HubPage() {
     );
   }
 
-  if (!me) return null;
+  const activeStats = playerStats || me;
+  if (!activeStats) return null;
 
-  const badge = getEloBadge(me.eloRating);
-  const totalBattles = me.totalWins + me.totalLosses;
-  const winRate = totalBattles > 0 ? Math.round((me.totalWins / totalBattles) * 100) : 0;
+  const badge = getEloBadge(activeStats.eloRating);
+  const totalBattles = activeStats.totalWins + activeStats.totalLosses;
+  const winRate = totalBattles > 0 ? Math.round((activeStats.totalWins / totalBattles) * 100) : 0;
 
   return (
-    <div className="h-full w-full bg-bg text-cream flex flex-col font-sans overflow-y-auto relative">
-      {/* Sci-Fi Decorative Grid Background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(128,119,92,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(128,119,92,0.03)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
-      <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-olive/10 blur-[120px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-sand/5 blur-[150px] rounded-full pointer-events-none" />
+    <IntroAnimation>
+      <div className="h-full w-full bg-bg text-cream flex flex-col font-sans overflow-y-auto relative">
+        {/* Sci-Fi Decorative Grid Background */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(128,119,92,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(128,119,92,0.03)_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-olive/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-sand/5 blur-[150px] rounded-full pointer-events-none" />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-8 relative z-10">
+        <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8 space-y-8 relative z-10">
         {/* SECTION 1: War Room Header */}
         <section className="bg-surface/50 border border-khaki/10 rounded-2xl p-6 backdrop-blur-md relative overflow-hidden">
           {/* Subtle top light bar */}
@@ -363,8 +404,8 @@ export default function HubPage() {
             <div className="flex items-center space-x-5">
               <div className="relative">
                 <img
-                  src={me.avatar}
-                  alt={me.username}
+                  src={activeStats.avatar}
+                  alt={activeStats.username}
                   className="w-20 h-20 rounded-2xl border-2 border-khaki/20 bg-surface2/60 shadow-lg object-cover"
                 />
                 <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
@@ -374,14 +415,14 @@ export default function HubPage() {
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-baseline space-x-3">
-                  <h2 className="font-space text-3xl font-bold tracking-tight text-cream">{me.username}</h2>
+                  <h2 className="font-space text-3xl font-bold tracking-tight text-cream">{activeStats.username}</h2>
                   <span className="font-mono text-xs text-khaki uppercase tracking-widest">Active Player</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <span className={`px-3 py-0.5 border text-xs font-mono font-bold rounded uppercase tracking-wider ${badge.color}`}>
                     {badge.name} Division
                   </span>
-                  <span className="font-mono text-sm text-sand">Rating: {me.eloRating} ELO</span>
+                  <span className="font-mono text-sm text-sand">Rating: {activeStats.eloRating} ELO</span>
                 </div>
               </div>
             </div>
@@ -398,11 +439,11 @@ export default function HubPage() {
           {/* Metric grid */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[
-              { label: "Wins", val: me.totalWins, color: "text-[#81c784]" },
-              { label: "Losses", val: me.totalLosses, color: "text-[#e57373]" },
+              { label: "Wins", val: activeStats.totalWins, color: "text-[#81c784]" },
+              { label: "Losses", val: activeStats.totalLosses, color: "text-[#e57373]" },
               { label: "Total Matches", val: totalBattles, color: "text-cream" },
               { label: "Win Rate", val: `${winRate}%`, color: "text-sand" },
-              { label: "Streak", val: `${me.currentStreak} 🔥`, color: "text-amber-500" },
+              { label: "Streak", val: `${activeStats.currentStreak} 🔥`, color: "text-amber-500" },
             ].map((stat, idx) => (
               <div key={idx} className="bg-bg/40 border border-khaki/10 rounded-xl p-4 flex flex-col justify-center">
                 <span className="text-[10px] uppercase font-mono tracking-widest text-khaki mb-1">{stat.label}</span>
@@ -419,39 +460,42 @@ export default function HubPage() {
           <div className="lg:col-span-2 space-y-8">
             
             {/* Daily Challenge Banner */}
-            {dailyChallenge && (
-              <section className="relative bg-gradient-to-r from-surface2 to-olive/20 border border-sand/20 rounded-2xl p-6 overflow-hidden shadow-xl group">
-                {/* Decorative pulsing neon edge */}
-                <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-sand/5 to-transparent pointer-events-none" />
+            {(() => {
+              const challengeToShow = dailyChallenge || fallbackChallenge;
+              return challengeToShow ? (
+                <section className="relative bg-gradient-to-r from-surface2 to-olive/20 border border-sand/20 rounded-2xl p-6 overflow-hidden shadow-xl group">
+                  {/* Decorative pulsing neon edge */}
+                  <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-sand/5 to-transparent pointer-events-none" />
 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                  <div className="space-y-3 max-w-lg">
-                    <div className="flex items-center space-x-2">
-                      <span className="bg-sand text-bg px-2.5 py-0.5 rounded text-[10px] font-space font-bold uppercase tracking-wider">
-                        Daily Challenge
-                      </span>
-                      <span className="font-mono text-xs text-khaki uppercase tracking-wider">
-                        {dailyChallengeSolvedCount} solves today
-                      </span>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                    <div className="space-y-3 max-w-lg">
+                      <div className="flex items-center space-x-2">
+                        <span className="bg-sand text-bg px-2.5 py-0.5 rounded text-[10px] font-space font-bold uppercase tracking-wider">
+                          Daily Challenge
+                        </span>
+                        <span className="font-mono text-xs text-khaki uppercase tracking-wider">
+                          {dailyChallengeSolvedCount} solves today
+                        </span>
+                      </div>
+                      <h3 className="font-space text-2xl font-bold text-cream tracking-tight group-hover:text-sand transition-colors">
+                        {challengeToShow.title}
+                      </h3>
+                      <p className="text-xs text-khaki leading-relaxed">{challengeToShow.description}</p>
                     </div>
-                    <h3 className="font-space text-2xl font-bold text-cream tracking-tight group-hover:text-sand transition-colors">
-                      {dailyChallenge.title}
-                    </h3>
-                    <p className="text-xs text-khaki leading-relaxed">{dailyChallenge.description}</p>
-                  </div>
 
-                  <button
-                    onClick={handlePlayDailyChallenge}
-                    className="flex-shrink-0 bg-cream hover:bg-sand text-bg font-space font-bold text-xs uppercase px-6 py-3.5 rounded-xl tracking-wider shadow-lg transition duration-200 cursor-pointer flex items-center space-x-2"
-                  >
-                    <span>Play Solo Run</span>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                    </svg>
-                  </button>
-                </div>
-              </section>
-            )}
+                    <button
+                      onClick={handlePlayDailyChallenge}
+                      className="flex-shrink-0 bg-cream hover:bg-sand text-bg font-space font-bold text-xs uppercase px-6 py-3.5 rounded-xl tracking-wider shadow-lg transition duration-200 cursor-pointer flex items-center space-x-2"
+                    >
+                      <span>Play Solo Run</span>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                      </svg>
+                    </button>
+                  </div>
+                </section>
+              ) : null;
+            })()}
 
             {/* Quick Play Buttons (3 Mode Cards) */}
             <section className="space-y-4">
@@ -540,7 +584,7 @@ export default function HubPage() {
                       <svg className="w-8 h-8 text-khaki/20 mb-2 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      WAITING FOR COMPLETED BATTLES TO STREAM...
+                      Arena is quiet... be the first to battle
                     </div>
                   ) : (
                     activities.map((act) => (
@@ -594,15 +638,15 @@ export default function HubPage() {
               <div className="bg-surface/50 border border-khaki/10 rounded-2xl p-4 backdrop-blur-md space-y-3">
                 {recentBattles.length === 0 ? (
                   <div className="py-8 text-center text-khaki font-mono text-xs">
-                    NO COMPLETED BATTLES RECORDED.
+                    No battles yet — Enter the lobby to fight
                   </div>
                 ) : (
                   recentBattles.map((battle) => {
                     const isSolo = !battle.player2;
-                    const isMeWinner = battle.winnerId === me.id;
+                    const isMeWinner = battle.winnerId === activeStats.id;
                     const opponent = isSolo
                       ? null
-                      : battle.player1.id === me.id
+                      : battle.player1.id === activeStats.id
                       ? battle.player2
                       : battle.player1;
 
@@ -663,7 +707,7 @@ export default function HubPage() {
               <div className="bg-surface/50 border border-khaki/10 rounded-2xl p-4 backdrop-blur-md space-y-4">
                 {friends.length === 0 ? (
                   <div className="py-8 text-center text-khaki font-mono text-xs">
-                    NO REGISTERED PLAYERS AVAILABLE.
+                    No friends yet — search for players to add them
                   </div>
                 ) : (
                   friends.map((friend) => {
@@ -699,10 +743,7 @@ export default function HubPage() {
                         </div>
 
                         <button
-                          onClick={() => {
-                            setSelectedFriend(friend);
-                            setIsChallengeModalOpen(true);
-                          }}
+                          onClick={() => router.push(`/lobby?challengeFriendId=${friend.id}&friendName=${friend.username}`)}
                           disabled={!isOnline}
                           className={`font-space font-bold uppercase tracking-wider text-[10px] px-3 py-1.5 rounded-lg border transition ${
                             isOnline
@@ -722,66 +763,6 @@ export default function HubPage() {
           </div>
         </div>
       </main>
-
-      {/* CHALLENGE FRIEND POPUP MODAL */}
-      <Dialog.Root open={isChallengeModalOpen} onOpenChange={setIsChallengeModalOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-fade-in" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-surface border border-khaki/20 rounded-2xl w-full max-w-sm max-h-[85vh] z-50 shadow-2xl relative flex flex-col overflow-hidden font-sans">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-sand to-transparent opacity-60 z-10" />
-
-            {/* Header */}
-            <div className="p-6 pb-4 border-b border-khaki/10">
-              <Dialog.Title className="font-space text-xl font-bold text-cream uppercase">
-                CHALLENGE FRIEND
-              </Dialog.Title>
-              <Dialog.Description className="text-xs text-khaki font-mono mt-1">
-                You are challenging @{selectedFriend?.username} to a direct arena match. Select the battle mode to launch the duel.
-              </Dialog.Description>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <label className="block text-[10px] uppercase font-mono tracking-wider text-khaki font-bold">Battle Mode</label>
-              <div className="grid grid-cols-1 gap-2">
-                {[
-                  { id: "SYSTEM_CRASH", label: "System Crash" },
-                  { id: "ARCH_WARS", label: "Arch Wars" },
-                  { id: "LOAD_BREAKER", label: "Load Breaker" },
-                ].map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setChallengeMode(mode.id)}
-                    className={`py-3 px-4 text-xs font-space font-bold uppercase rounded-lg border text-left tracking-wider transition ${
-                      challengeMode === mode.id
-                        ? "bg-cream text-bg border-cream"
-                        : "border-khaki/20 hover:border-khaki/50 text-cream"
-                    }`}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Sticky Actions Footer */}
-            <div className="p-6 pt-4 border-t border-khaki/10 bg-surface flex space-x-3">
-              <button
-                onClick={() => setIsChallengeModalOpen(false)}
-                className="w-1/2 border border-khaki/20 hover:border-khaki/50 py-3 rounded-xl font-space font-semibold text-xs uppercase tracking-wider transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleLaunchChallenge}
-                className="w-1/2 bg-cream text-bg py-3 rounded-xl font-space font-semibold text-xs uppercase tracking-wider hover:bg-sand transition cursor-pointer"
-              >
-                Send Invite
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
 
       {/* INCOMING FRIEND CHALLENGE TOAST NOTIFICATION */}
       <AnimatePresence>
@@ -827,6 +808,7 @@ export default function HubPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </IntroAnimation>
   );
 }

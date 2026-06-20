@@ -49,6 +49,8 @@ model Player {
   battlesAsP2   Battle[]           @relation("Player2Battles")
   wonBattles    Battle[]           @relation("WinnerBattles")
   submissions   BattleSubmission[]
+  sentRequests     Friendship[]       @relation("SentRequests")
+  receivedRequests Friendship[]       @relation("ReceivedRequests")
 }
 
 model Battle {
@@ -141,5 +143,15 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model Friendship {
+  id          String   @id @default(cuid())
+  requesterId String
+  receiverId  String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  requester   Player   @relation("SentRequests", fields: [requesterId], references: [id])
+  receiver    Player   @relation("ReceivedRequests", fields: [receiverId], references: [id])
 }
 
