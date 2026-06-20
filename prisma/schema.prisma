@@ -42,8 +42,8 @@ model Player {
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   
-  userId        String?            @unique
-  user          User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String             @unique
+  user          User               @relation(fields: [userId], references: [id])
   
   battlesAsP1   Battle[]           @relation("Player1Battles")
   battlesAsP2   Battle[]           @relation("Player2Battles")
