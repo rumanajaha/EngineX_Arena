@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { BattleMode, BattleStatus } from "@/app/generated/prisma/client";
+import { BattleMode, BattleStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { BattleStatus } from "@/app/generated/prisma/client";
+import { BattleStatus } from "@prisma/client";
 
 export async function POST(request: Request) {
   try {

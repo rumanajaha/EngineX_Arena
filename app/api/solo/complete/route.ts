@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { BattleStatus, Prisma } from "@/app/generated/prisma/client";
+import { BattleStatus, Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 export async function POST(request: Request) {

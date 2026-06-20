@@ -2,7 +2,7 @@ import "dotenv/config";
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import { prisma } from "../lib/prisma";
-import { BattleMode, BattleStatus } from "../app/generated/prisma/client";
+import { BattleMode, BattleStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 
 const PORT = process.env.SOCKET_PORT ? parseInt(process.env.SOCKET_PORT) : 3001;
