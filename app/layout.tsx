@@ -27,11 +27,11 @@ export default function RootLayout({
   }>) {
   return (
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
-      <body className="antialiased bg-bg text-cream font-sans flex flex-col h-screen w-screen overflow-hidden">
+      <body className="antialiased bg-bg text-cream font-sans flex flex-col min-h-screen">
         <SessionProvider>
           <ToastProvider>
             <Navbar />
-            <main className="flex-1 min-h-0 relative flex flex-col">
+            <main className="flex-grow flex flex-col">
               {children}
             </main>
           </ToastProvider>

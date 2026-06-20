@@ -816,7 +816,7 @@ function BattleRoomPageContent() {
 
   return (
     <SocketConnectionBoundary>
-      <div className="h-full w-full bg-bg text-cream flex flex-col overflow-hidden font-sans relative">
+      <div className="h-[calc(100vh-57px)] md:h-[calc(100vh-73px)] w-full bg-bg text-cream flex flex-col overflow-hidden font-sans relative">
       {/* Dynamic Top bar */}
       <header className="h-16 border-b border-khaki/10 bg-surface/80 backdrop-blur-md flex justify-between items-center px-8 z-20">
         {/* Me */}

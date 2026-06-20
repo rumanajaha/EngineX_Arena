@@ -412,7 +412,7 @@ export default function LobbyPage() {
 
   return (
     <SocketConnectionBoundary>
-      <div className="h-full w-full flex flex-col font-sans overflow-hidden relative bg-bg text-cream">
+      <div className="h-[calc(100vh-57px)] md:h-[calc(100vh-73px)] w-full flex flex-col font-sans overflow-hidden relative bg-bg text-cream">
         {/* Background glow decoration */}
         <div className="absolute top-0 right-1/4 w-96 h-96 bg-olive/10 blur-[100px] pointer-events-none" />
         <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-sand/5 blur-[100px] pointer-events-none" />

@@ -677,7 +677,7 @@ function SoloChallengePageContent() {
   const isLowTime = timeLeft < 120; // Red indicator below 2 minutes
 
   return (
-    <div className="h-full w-full bg-bg text-cream flex flex-col overflow-hidden font-sans relative">
+    <div className="h-[calc(100vh-57px)] md:h-[calc(100vh-73px)] w-full bg-bg text-cream flex flex-col overflow-hidden font-sans relative">
       {/* Sci-Fi glowing grid decoration */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(87,74,36,0.1),transparent_60%)] pointer-events-none" />
 

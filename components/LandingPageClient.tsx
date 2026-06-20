@@ -74,14 +74,6 @@ export default function LandingPageClient() {
       });
   }, []);
 
-  const handleScrollToFeatures = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const element = document.getElementById("features");
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
   return (
     <div className="bg-bg text-cream min-h-screen font-sans selection:bg-sand selection:text-bg">
       <style>{`
@@ -123,26 +115,45 @@ export default function LandingPageClient() {
           z-index: 10;
           opacity: 0.4;
         }
-        @keyframes floatUp {
-          0% {
-            transform: translateY(100vh) translateX(0) scale(1);
-            opacity: 0;
+        @keyframes glowOne {
+          0%, 100% {
+            transform: translate(0px, 0px) scale(1);
           }
-          10% {
-            opacity: 0.35;
+          33% {
+            transform: translate(8%, 12%) scale(1.1);
           }
-          90% {
-            opacity: 0.35;
-          }
-          100% {
-            transform: translateY(-20vh) translateX(100px) scale(1.5);
-            opacity: 0;
+          66% {
+            transform: translate(-8%, 8%) scale(0.95);
           }
         }
-        .floating-dot {
+        @keyframes glowTwo {
+          0%, 100% {
+            transform: translate(0px, 0px) scale(1);
+          }
+          50% {
+            transform: translate(-12%, -8%) scale(1.15);
+          }
+        }
+        .glow-element-1 {
           position: absolute;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(203, 189, 147, 0.4) 0%, rgba(203, 189, 147, 0) 70%);
+          width: 70vw;
+          height: 70vw;
+          top: -20%;
+          left: -20%;
+          background: radial-gradient(circle, rgba(203, 189, 147, 0.12) 0%, rgba(203, 189, 147, 0) 70%);
+          filter: blur(80px);
+          animation: glowOne 22s infinite ease-in-out;
+          pointer-events: none;
+        }
+        .glow-element-2 {
+          position: absolute;
+          width: 80vw;
+          height: 80vw;
+          bottom: -25%;
+          right: -25%;
+          background: radial-gradient(circle, rgba(87, 74, 36, 0.15) 0%, rgba(87, 74, 36, 0) 70%);
+          filter: blur(100px);
+          animation: glowTwo 28s infinite ease-in-out;
           pointer-events: none;
         }
       `}</style>
@@ -151,13 +162,11 @@ export default function LandingPageClient() {
       <div className="scanlines" />
 
       {/* SECTION 1 — HERO */}
-      <section className="relative h-screen flex flex-col justify-between items-center px-6 overflow-hidden bg-[#0D0D0A]">
-        {/* Floating Glowing Dots Background */}
+      <section className="relative min-h-screen py-16 md:py-24 flex flex-col justify-between items-center px-6 overflow-hidden bg-[#0D0D0A]">
+        {/* Ambient CSS Radial Glow Background */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-          <div className="floating-dot w-64 h-64 top-1/4 left-1/4 animate-[floatUp_20s_infinite_linear]" style={{ animationDelay: "0s" }} />
-          <div className="floating-dot w-96 h-96 top-1/2 left-2/3 animate-[floatUp_28s_infinite_linear]" style={{ animationDelay: "-5s" }} />
-          <div className="floating-dot w-48 h-48 top-3/4 left-1/10 animate-[floatUp_15s_infinite_linear]" style={{ animationDelay: "-10s" }} />
-          <div className="floating-dot w-80 h-80 top-1/10 left-3/4 animate-[floatUp_25s_infinite_linear]" style={{ animationDelay: "-15s" }} />
+          <div className="glow-element-1" />
+          <div className="glow-element-2" />
         </div>
 
         {/* Empty Spacer */}
@@ -197,8 +206,7 @@ export default function LandingPageClient() {
             </button>
             <a
               href="#features"
-              onClick={handleScrollToFeatures}
-              className="w-full sm:w-auto px-8 py-3.5 border border-[#574A24] hover:border-sand text-[#CBBD93] hover:text-cream font-space font-bold uppercase text-xs tracking-wider rounded-lg transition-all duration-300 bg-transparent cursor-pointer"
+              className="w-full sm:w-auto px-8 py-3.5 border border-[#574A24] hover:border-sand text-[#CBBD93] hover:text-cream font-space font-bold uppercase text-xs tracking-wider rounded-lg transition-all duration-300 bg-transparent cursor-pointer text-center"
             >
               See How It Works
             </a>
@@ -207,10 +215,7 @@ export default function LandingPageClient() {
 
         {/* Bouncing Scroll indicator */}
         <div className="arrow-bounce pb-8 z-10 flex flex-col items-center">
-          <a href="#stats" onClick={(e) => {
-            e.preventDefault();
-            document.getElementById("stats")?.scrollIntoView({ behavior: "smooth" });
-          }} className="text-khaki hover:text-sand transition-colors">
+          <a href="#stats" className="text-khaki hover:text-sand transition-colors">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
             </svg>
