@@ -109,7 +109,7 @@ function BattleRoomPageContent() {
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [selectedTool, setSelectedTool] = useState<string>("select");
-  const [history, setHistory] = useState<{ nodes: any[]; edges: any[] }[]>([]);
+  const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
@@ -119,8 +119,8 @@ function BattleRoomPageContent() {
   const { project } = useReactFlow();
 
   // History management helper
-  const recordHistoryState = useCallback((currentNodes: any[], currentEdges: any[]) => {
-    const stripCallbacks = (array: any[]) =>
+  const recordHistoryState = useCallback((currentNodes: Node[], currentEdges: Edge[]) => {
+    const stripCallbacks = (array: Node[]) =>
       array.map((item) => {
         const copy = { ...item };
         if (copy.data) {
@@ -183,7 +183,7 @@ function BattleRoomPageContent() {
   }, [edges, recordHistoryState, setNodes]);
 
   // Enrich nodes with function callbacks (useful when loading state or undoing)
-  const enrichNodes = useCallback((nds: any[]) => {
+  const enrichNodes = useCallback((nds: Node[]) => {
     return nds.map((n) => ({
       ...n,
       data: {
@@ -780,17 +780,6 @@ function BattleRoomPageContent() {
     // Update ELO after votes if needed or just trigger finish
   };
 
-  // Add React Flow Node
-  const addNode = (type: string) => {
-    const id = (nodes.length + 1).toString();
-    const newNode: Node = {
-      id,
-      data: { label: type },
-      position: { x: Math.random() * 200 + 100, y: Math.random() * 150 + 50 },
-      className: `border-2 font-mono font-bold px-4 py-2 rounded-lg shadow-md ${nodeColors[type] || "bg-surface text-cream"}`,
-    };
-    setNodes((nds) => nds.concat(newNode));
-  };
 
   const onConnect = useCallback(
     (params: Connection | Edge) => {
@@ -1199,7 +1188,7 @@ function BattleRoomPageContent() {
                                     <button
                                       key={style}
                                       type="button"
-                                      onClick={() => handleUpdateEdgeStyle(selectedEdge.id, style as any)}
+                                      onClick={() => handleUpdateEdgeStyle(selectedEdge.id, style as "solid" | "dashed" | "dotted")}
                                       className={`px-2.5 py-1 rounded text-[9px] font-space font-bold uppercase transition ${
                                         (style === "solid" && !selectedEdge.animated && !selectedEdge.style?.strokeDasharray) ||
                                         (style === "dashed" && selectedEdge.animated) ||

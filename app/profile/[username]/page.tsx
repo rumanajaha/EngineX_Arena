@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 
 export default async function ProfilePage({
@@ -67,9 +68,11 @@ export default async function ProfilePage({
         <div className="relative z-10 max-w-lg w-full bg-[#1A1A14] border border-[#80775C]/20 rounded-2xl p-8 shadow-2xl space-y-8">
           {/* Main profile card */}
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <img
+            <Image
               src={player.avatar || "https://github.com/identicons/guest.png"}
               alt={player.username}
+              width={96}
+              height={96}
               className="w-24 h-24 rounded-2xl border-2 border-[#80775C]/20 object-cover shadow-lg"
             />
             <div className="space-y-3 text-center sm:text-left flex-1">

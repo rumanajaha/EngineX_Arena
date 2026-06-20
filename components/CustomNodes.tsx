@@ -3,6 +3,20 @@
 import React, { useState, useEffect } from "react";
 import { Handle, Position } from "reactflow";
 
+export interface CustomNodeData {
+  name?: string;
+  label?: string;
+  color?: string;
+  onRename?: (id: string, name: string) => void;
+  onDelete?: (id: string) => void;
+}
+
+export interface CustomNodeProps {
+  id: string;
+  data: CustomNodeData;
+  selected?: boolean;
+}
+
 // Map types to premium colors and icon identifiers
 export const NODE_CONFIGS: Record<string, { color: string; label: string; icon: string }> = {
   Client: { color: "#3B82F6", label: "Client", icon: "client" },
@@ -96,7 +110,7 @@ const getIconSvg = (iconName: string, color: string) => {
   }
 };
 
-export function ArchNode({ id, data, selected }: any) {
+export function ArchNode({ id, data, selected }: CustomNodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(data.name || data.label || "");
 
@@ -208,7 +222,7 @@ export function ArchNode({ id, data, selected }: any) {
   );
 }
 
-export function TextLabelNode({ id, data, selected }: any) {
+export function TextLabelNode({ id, data, selected }: CustomNodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(data.name || data.label || "Text Label");
 
@@ -272,7 +286,7 @@ export function TextLabelNode({ id, data, selected }: any) {
   );
 }
 
-export function StickyNoteNode({ id, data, selected }: any) {
+export function StickyNoteNode({ id, data, selected }: CustomNodeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(data.name || data.label || "Sticky Note");
 

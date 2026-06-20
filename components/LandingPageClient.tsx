@@ -3,8 +3,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useInView } from "framer-motion";
-import Particles, { initParticlesEngine } from "@tsparticles/react";
-import { loadSlim } from "@tsparticles/slim";
 
 function CountUp({ value }: { value: number }) {
   const [count, setCount] = useState(0);
@@ -51,7 +49,6 @@ function CountUp({ value }: { value: number }) {
 
 export default function LandingPageClient() {
   const router = useRouter();
-  const [init, setInit] = useState(false);
   const [stats, setStats] = useState({
     engineersOnline: 247,
     battlesFought: 1842,
@@ -60,12 +57,6 @@ export default function LandingPageClient() {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   useEffect(() => {
-    initParticlesEngine(async (engine) => {
-      await loadSlim(engine);
-    }).then(() => {
-      setInit(true);
-    });
-
     fetch("/api/stats")
       .then((res) => {
         if (res.ok) return res.json();
@@ -132,6 +123,28 @@ export default function LandingPageClient() {
           z-index: 10;
           opacity: 0.4;
         }
+        @keyframes floatUp {
+          0% {
+            transform: translateY(100vh) translateX(0) scale(1);
+            opacity: 0;
+          }
+          10% {
+            opacity: 0.35;
+          }
+          90% {
+            opacity: 0.35;
+          }
+          100% {
+            transform: translateY(-20vh) translateX(100px) scale(1.5);
+            opacity: 0;
+          }
+        }
+        .floating-dot {
+          position: absolute;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(203, 189, 147, 0.4) 0%, rgba(203, 189, 147, 0) 70%);
+          pointer-events: none;
+        }
       `}</style>
 
       {/* Screen CRT scanlines overlay for premium retro-futuristic arcade vibe */}
@@ -139,61 +152,13 @@ export default function LandingPageClient() {
 
       {/* SECTION 1 — HERO */}
       <section className="relative h-screen flex flex-col justify-between items-center px-6 overflow-hidden bg-[#0D0D0A]">
-        {/* Particle Backdrop */}
-        {init && (
-          <Particles
-            id="hero-particles"
-            className="absolute inset-0 z-0 pointer-events-none"
-            options={{
-              background: {
-                color: {
-                  value: "transparent",
-                },
-              },
-              fpsLimit: 60,
-              particles: {
-                color: {
-                  value: "#CBBD93",
-                },
-                links: {
-                  color: "#80775C",
-                  distance: 140,
-                  enable: true,
-                  opacity: 0.25,
-                  width: 1,
-                },
-                move: {
-                  direction: "none",
-                  enable: true,
-                  outModes: {
-                    default: "bounce",
-                  },
-                  random: false,
-                  speed: 0.8,
-                  straight: false,
-                },
-                number: {
-                  density: {
-                    enable: true,
-                    width: 800,
-                    height: 800,
-                  },
-                  value: 65,
-                },
-                opacity: {
-                  value: 0.4,
-                },
-                shape: {
-                  type: "circle",
-                },
-                size: {
-                  value: { min: 1, max: 2.5 },
-                },
-              },
-              detectRetina: true,
-            }}
-          />
-        )}
+        {/* Floating Glowing Dots Background */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="floating-dot w-64 h-64 top-1/4 left-1/4 animate-[floatUp_20s_infinite_linear]" style={{ animationDelay: "0s" }} />
+          <div className="floating-dot w-96 h-96 top-1/2 left-2/3 animate-[floatUp_28s_infinite_linear]" style={{ animationDelay: "-5s" }} />
+          <div className="floating-dot w-48 h-48 top-3/4 left-1/10 animate-[floatUp_15s_infinite_linear]" style={{ animationDelay: "-10s" }} />
+          <div className="floating-dot w-80 h-80 top-1/10 left-3/4 animate-[floatUp_25s_infinite_linear]" style={{ animationDelay: "-15s" }} />
+        </div>
 
         {/* Empty Spacer */}
         <div />
