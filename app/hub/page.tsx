@@ -225,7 +225,7 @@ export default function HubPage() {
   useEffect(() => {
     if (!me) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!);
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001");
     socketRef.current = socket;
 
     socket.emit("join:lobby", me.id);

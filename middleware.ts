@@ -10,6 +10,7 @@ export const config = {
   matcher: [
     "/hub",
     "/lobby",
+    "/friends",
     "/battle/:path*",
     "/profile/:path*",
     "/leaderboard",

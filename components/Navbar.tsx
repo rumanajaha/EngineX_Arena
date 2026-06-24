@@ -622,6 +622,7 @@ export default function Navbar() {
   const links = [
     { label: "Hub", href: "/hub" },
     { label: "Lobby", href: "/lobby" },
+    { label: "Friends", href: "/friends" },
     { label: "Leaderboard", href: "/leaderboard" },
   ];
 
@@ -677,9 +678,12 @@ export default function Navbar() {
         </button>
 
         {/* Notification Bell */}
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <div className="relative">
           <button
-            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsNotificationsOpen(!isNotificationsOpen);
+            }}
             className="p-2 hover:bg-surface2/50 rounded-lg border border-khaki/15 hover:border-sand transition text-khaki hover:text-cream relative cursor-pointer"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -695,6 +699,7 @@ export default function Navbar() {
           <AnimatePresence>
             {isNotificationsOpen && (
               <motion.div
+                onClick={(e) => e.stopPropagation()}
                 initial={{ opacity: 0, y: -8, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
@@ -754,13 +759,16 @@ export default function Navbar() {
         </div>
 
         {/* Profile Dropdown */}
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <div className="relative flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
           <button
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center space-x-2 md:space-x-3 hover:opacity-90 transition"
+            onClick={() => {
+              setIsProfileOpen(false);
+              router.push('/profile/' + sessionUsername);
+            }}
+            className="flex items-center space-x-2 md:space-x-3 hover:opacity-90 transition text-left"
           >
             <div className="hidden md:block text-right">
-              <span className="font-space font-medium text-cream block hover:text-sand transition text-sm leading-tight">
+              <span className="font-space font-medium text-cream block hover:text-sand transition text-sm leading-tight text-right">
                 {player.username}
               </span>
               <div className="flex items-center space-x-1.5 justify-end mt-1">
@@ -777,9 +785,22 @@ export default function Navbar() {
             />
           </button>
 
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsProfileOpen(!isProfileOpen);
+            }}
+            className="p-1.5 hover:bg-surface2/50 rounded-lg text-khaki hover:text-cream transition cursor-pointer self-stretch flex items-center"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
           <AnimatePresence>
             {isProfileOpen && (
               <motion.div
+                onClick={(e) => e.stopPropagation()}
                 initial={{ opacity: 0, y: -8, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.95 }}

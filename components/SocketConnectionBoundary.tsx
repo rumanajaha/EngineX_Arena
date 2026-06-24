@@ -6,10 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export default function SocketConnectionBoundary({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(true);
+  const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
   useEffect(() => {
     // Establish connection monitoring socket client to verify port 3001 state
-    const socket = io("http://localhost:3001", {
+    const socket = io(socketUrl, {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
     });
@@ -29,7 +30,7 @@ export default function SocketConnectionBoundary({ children }: { children: React
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [socketUrl]);
 
   return (
     <div className="relative min-h-screen">
@@ -56,7 +57,7 @@ export default function SocketConnectionBoundary({ children }: { children: React
               <div className="space-y-2">
                 <h3 className="font-space text-lg font-bold tracking-wider text-cream uppercase">Connection Lost</h3>
                 <p className="font-mono text-[10px] text-khaki leading-relaxed">
-                  Lost connection to EngineX Arena socket gateways. Reconnecting to port 3001...
+                  Lost connection to EngineX Arena socket gateways. Reconnecting to {socketUrl}...
                 </p>
               </div>
             </div>
